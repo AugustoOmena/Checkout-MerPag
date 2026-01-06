@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { loadMercadoPago } from '@mercadopago/sdk-js';
 import './styles.css';
 
-// --- INTERFACES (Clean Code: Tipagem forte) ---
+// --- INTERFACES ---
 interface IdentificationType {
   id: string;
   name: string;
@@ -27,18 +27,37 @@ interface PayerCost {
   recommended_message: string;
 }
 
+// Interface para os dados do formulário (Clean Code)
+interface FormData {
+  cardholderName: string;
+  identificationType: string;
+  identificationNumber: string;
+  email: string;
+  issuer: string;
+  installments: string;
+}
+
 export function PaymentForm() {
-  // Constante do valor da compra (Simulando o value="100" do input hidden)
   const transactionAmount = "100";
 
   // --- STATES ---
   const [identificationTypes, setIdentificationTypes] = useState<IdentificationType[]>([]);
   const [paymentMethodId, setPaymentMethodId] = useState<string>('');
   const [issuers, setIssuers] = useState<Issuer[]>([]);
-  // Estado para as parcelas (Payer Costs)
   const [installmentOptions, setInstallmentOptions] = useState<PayerCost[]>([]);
+  
+  // State único para os inputs do formulário
+  const [formData, setFormData] = useState<FormData>({
+    cardholderName: '',
+    identificationType: '',
+    identificationNumber: '',
+    email: '',
+    issuer: '',
+    installments: ''
+  });
 
   // --- REFS ---
+  const mpRef = useRef<any>(null); // Guardamos a instância do MP aqui
   const cardNumberRef = useRef<any>(null);
   const expirationDateRef = useRef<any>(null);
   const securityCodeRef = useRef<any>(null);
@@ -51,24 +70,25 @@ export function PaymentForm() {
       initializationRef.current = true;
 
       await loadMercadoPago();
-      const mp = new (window as any).MercadoPago('TEST-33d77029-c5e0-425f-b848-606ac9a9264f');
+      // Salvamos no Ref para usar no submit depois
+      mpRef.current = new (window as any).MercadoPago('TEST-33d77029-c5e0-425f-b848-606ac9a9264f');
 
       // 1. Monta os campos
-      cardNumberRef.current = mp.fields.create('cardNumber', {
+      cardNumberRef.current = mpRef.current.fields.create('cardNumber', {
         placeholder: "Número do cartão"
       }).mount('form-checkout__cardNumber');
 
-      expirationDateRef.current = mp.fields.create('expirationDate', {
+      expirationDateRef.current = mpRef.current.fields.create('expirationDate', {
         placeholder: "MM/YY",
       }).mount('form-checkout__expirationDate');
 
-      securityCodeRef.current = mp.fields.create('securityCode', {
+      securityCodeRef.current = mpRef.current.fields.create('securityCode', {
         placeholder: "Código de segurança"
       }).mount('form-checkout__securityCode');
 
       // 2. Busca tipos de documento
       try {
-        const types = await mp.getIdentificationTypes();
+        const types = await mpRef.current.getIdentificationTypes();
         setIdentificationTypes(types);
       } catch (e) {
         console.error('Erro ao buscar tipos de documento:', e);
@@ -77,36 +97,30 @@ export function PaymentForm() {
       // 3. Listener de BIN Change
       cardNumberRef.current.on('binChange', async (data: any) => {
         const { bin } = data;
-
         try {
           if (!bin && paymentMethodId) {
             setPaymentMethodId('');
             setIssuers([]);
-            setInstallmentOptions([]); // Limpa as parcelas
+            setInstallmentOptions([]);
           }
 
           if (bin && bin !== currentBinRef.current) {
-            const { results } = await mp.getPaymentMethods({ bin });
+            const { results } = await mpRef.current.getPaymentMethods({ bin });
             const paymentMethod = results[0];
 
             if (paymentMethod) {
               setPaymentMethodId(paymentMethod.id);
-              
               updatePCIFieldsSettings(paymentMethod);
-              await updateIssuer(mp, paymentMethod, bin);
-              await updateInstallments(mp, paymentMethod, bin); // Chama a função real
+              await updateIssuer(mpRef.current, paymentMethod, bin);
+              await updateInstallments(mpRef.current, paymentMethod, bin);
             }
           }
-
           currentBinRef.current = bin;
-
         } catch (e) {
           console.error('Erro ao obter payment methods:', e);
         }
       });
     };
-
-    // --- FUNÇÕES AUXILIARES ---
 
     function updatePCIFieldsSettings(paymentMethod: PaymentMethod) {
       const { settings } = paymentMethod;
@@ -119,7 +133,6 @@ export function PaymentForm() {
     async function updateIssuer(mp: any, paymentMethod: PaymentMethod, bin: string) {
       const { additional_info_needed, issuer } = paymentMethod;
       let issuerOptions: Issuer[] = [issuer];
-
       if (additional_info_needed && additional_info_needed.includes('issuer_id')) {
         issuerOptions = await getIssuers(mp, paymentMethod, bin);
       }
@@ -136,7 +149,6 @@ export function PaymentForm() {
       }
     }
 
-    // --- IMPLEMENTAÇÃO FIEL À DOCUMENTAÇÃO (Obter Parcelas) ---
     async function updateInstallments(mp: any, _paymentMethod: any, bin: string) {
       try {
         const installments = await mp.getInstallments({
@@ -144,12 +156,7 @@ export function PaymentForm() {
           bin,
           paymentTypeId: 'credit_card'
         });
-        
-        // A API retorna um array, pegamos o primeiro item e acessamos payer_costs
-        const options = installments[0].payer_costs;
-        
-        // Atualiza o State (substitui o createSelectOptions da doc)
-        setInstallmentOptions(options);
+        setInstallmentOptions(installments[0].payer_costs);
       } catch (error) {
         console.error('error getting installments: ', error);
       }
@@ -162,25 +169,74 @@ export function PaymentForm() {
     };
   }, []);
 
+  // --- HANDLERS (Funções de Controle) ---
+
+  // Atualiza o state formData quando o usuário digita
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // --- PASSO ATUAL: CRIAR TOKEN ---
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault(); // Impede o reload da página
+
+    try {
+      if (!mpRef.current) return;
+
+      // Cria o token usando os dados do State (Clean Code) e dos Campos Seguros (Interno do MP)
+      const token = await mpRef.current.fields.createCardToken({
+        cardholderName: formData.cardholderName,
+        identificationType: formData.identificationType,
+        identificationNumber: formData.identificationNumber,
+      });
+
+      // SUCESSO!
+      console.log('Token criado com sucesso:', token.id);
+      
+      // AQUI ENTRA O PRÓXIMO PASSO (Server-side)
+      // Vamos enviar esse token.id + formData para o seu Backend
+      alert(`Token Criado: ${token.id}\nPronto para enviar ao Backend!`);
+
+    } catch (e) {
+      console.error('Erro ao criar token do cartão: ', e);
+      alert('Erro ao criar token. Verifique os dados.');
+    }
+  };
+
   return (
-    <form id="form-checkout">
+    <form id="form-checkout" onSubmit={handleSubmit}>
       <div id="form-checkout__cardNumber" className="container"></div>
       <div id="form-checkout__expirationDate" className="container"></div>
       <div id="form-checkout__securityCode" className="container"></div>
 
-      <input type="text" id="form-checkout__cardholderName" placeholder="Titular do cartão" />
+      <input 
+        type="text" 
+        id="form-checkout__cardholderName" 
+        name="cardholderName" // Name igual à chave do state
+        placeholder="Titular do cartão" 
+        value={formData.cardholderName}
+        onChange={handleInputChange}
+      />
 
-      <select id="form-checkout__issuer" name="issuer" defaultValue="">
+      <select 
+        id="form-checkout__issuer" 
+        name="issuer" 
+        value={formData.issuer}
+        onChange={handleInputChange}
+      >
         <option value="" disabled>Banco emissor</option>
         {issuers.map((issuer) => (
-          <option key={issuer.id} value={issuer.id}>
-            {issuer.name}
-          </option>
+          <option key={issuer.id} value={issuer.id}>{issuer.name}</option>
         ))}
       </select>
 
-      {/* Select de Parcelas populado pelo State 'installmentOptions' */}
-      <select id="form-checkout__installments" name="installments" defaultValue="">
+      <select 
+        id="form-checkout__installments" 
+        name="installments" 
+        value={formData.installments}
+        onChange={handleInputChange}
+      >
         <option value="" disabled>Parcelas</option>
         {installmentOptions.map((option) => (
           <option key={option.installments} value={option.installments}>
@@ -189,18 +245,36 @@ export function PaymentForm() {
         ))}
       </select>
 
-      <select id="form-checkout__identificationType" name="identificationType" defaultValue="">
+      <select 
+        id="form-checkout__identificationType" 
+        name="identificationType" 
+        value={formData.identificationType}
+        onChange={handleInputChange}
+      >
         <option value="" disabled>Tipo de documento</option>
         {identificationTypes.map((type) => (
           <option key={type.id} value={type.id}>{type.name}</option>
         ))}
       </select>
 
-      <input type="text" id="form-checkout__identificationNumber" name="identificationNumber" placeholder="Número do documento" />
-      <input type="email" id="form-checkout__email" name="email" placeholder="E-mail" />
+      <input 
+        type="text" 
+        id="form-checkout__identificationNumber" 
+        name="identificationNumber" 
+        placeholder="Número do documento" 
+        value={formData.identificationNumber}
+        onChange={handleInputChange}
+      />
 
-      {/* Inputs ocultos */}
-      <input id="token" name="token" type="hidden" />
+      <input 
+        type="email" 
+        id="form-checkout__email" 
+        name="email" 
+        placeholder="E-mail" 
+        value={formData.email}
+        onChange={handleInputChange}
+      />
+
       <input id="paymentMethodId" name="paymentMethodId" type="hidden" value={paymentMethodId} />
       <input id="transactionAmount" name="transactionAmount" type="hidden" value={transactionAmount} />
       <input id="description" name="description" type="hidden" value="Nome do Produto" />
