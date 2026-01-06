@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { loadMercadoPago } from '@mercadopago/sdk-js';
 import './styles.css';
 
-// Interfaces para tipagem
+// Interfaces
 interface IdentificationType {
   id: string;
   name: string;
@@ -12,24 +12,29 @@ interface PaymentMethod {
   id: string;
   name: string;
   payment_type_id: string;
-  settings: any[]; // Configurações de validação (tamanho do cartão, etc)
+  settings: any[];
   additional_info_needed: string[];
-  issuer: any;
+  issuer: any; // O objeto issuer padrão
+}
+
+interface Issuer {
+  id: string;
+  name: string;
 }
 
 export function PaymentForm() {
-  // --- STATES (O "Coração" reativo do componente) ---
+  // --- STATES ---
   const [identificationTypes, setIdentificationTypes] = useState<IdentificationType[]>([]);
   const [paymentMethodId, setPaymentMethodId] = useState<string>('');
-  const [issuers, setIssuers] = useState<any[]>([]); // Preparando para o próximo passo
-  const [installments, setInstallments] = useState<any[]>([]); // Preparando para o próximo passo
+  const [issuers, setIssuers] = useState<Issuer[]>([]); // Estado para armazenar os emissores
+  const [installments, setInstallments] = useState<any[]>([]);
 
-  // --- REFS (Instâncias que não precisam gerar renderização) ---
+  // --- REFS ---
   const cardNumberRef = useRef<any>(null);
   const expirationDateRef = useRef<any>(null);
   const securityCodeRef = useRef<any>(null);
   const initializationRef = useRef(false);
-  const currentBinRef = useRef<string>(''); // Substitui o 'let currentBin'
+  const currentBinRef = useRef<string>('');
 
   useEffect(() => {
     const initializeMercadoPago = async () => {
@@ -60,36 +65,30 @@ export function PaymentForm() {
         console.error('Erro ao buscar tipos de documento:', e);
       }
 
-      // 3. Lógica de "Bin Change" (NOVA ETAPA)
-      // Aqui traduzimos o evento 'binChange' da documentação para React
+      // 3. Listener de BIN Change
       cardNumberRef.current.on('binChange', async (data: any) => {
         const { bin } = data;
 
         try {
-          // Caso 1: Usuário apagou o cartão (bin vazio)
           if (!bin && paymentMethodId) {
             setPaymentMethodId('');
-            setIssuers([]); // Limpa selects (substitui clearSelectsAndSetPlaceholders)
+            setIssuers([]); // Limpa emissores
             setInstallments([]); 
           }
 
-          // Caso 2: Bin mudou (usuário digitou novos números)
           if (bin && bin !== currentBinRef.current) {
-            // Busca qual é a bandeira (Visa, Master, etc.)
             const { results } = await mp.getPaymentMethods({ bin });
             const paymentMethod = results[0];
 
             if (paymentMethod) {
               setPaymentMethodId(paymentMethod.id);
               
-              // Chama as funções auxiliares
               updatePCIFieldsSettings(paymentMethod);
-              await updateIssuer(mp, paymentMethod, bin);
+              await updateIssuer(mp, paymentMethod, bin); // Agora chama a função real
               await updateInstallments(mp, paymentMethod, bin);
             }
           }
 
-          // Atualiza o cache do BIN
           currentBinRef.current = bin;
 
         } catch (e) {
@@ -100,43 +99,51 @@ export function PaymentForm() {
 
     // --- FUNÇÕES AUXILIARES ---
 
-    // Atualiza as configurações de segurança dos campos (ex: CVV de 4 dígitos para Amex)
     function updatePCIFieldsSettings(paymentMethod: PaymentMethod) {
       const { settings } = paymentMethod;
-
       if (settings && settings[0]) {
-        const cardNumberSettings = settings[0].card_number;
-        cardNumberRef.current.update({
-          settings: cardNumberSettings
-        });
-
-        const securityCodeSettings = settings[0].security_code;
-        securityCodeRef.current.update({
-          settings: securityCodeSettings
-        });
+        cardNumberRef.current.update({ settings: settings[0].card_number });
+        securityCodeRef.current.update({ settings: settings[0].security_code });
       }
     }
 
-    // Placeholder para o Próximo Passo: Obter Emissor
-    async function updateIssuer(mp: any, paymentMethod: any, bin: string) {
-      // Implementaremos na próxima etapa
-      console.log('Buscando emissor para:', paymentMethod.id);
+    // --- IMPLEMENTAÇÃO FIEL À DOCUMENTAÇÃO (Obter Banco Emissor) ---
+    async function updateIssuer(mp: any, paymentMethod: PaymentMethod, bin: string) {
+      const { additional_info_needed, issuer } = paymentMethod;
+      
+      // Padrão: usa o emissor que veio no objeto paymentMethod
+      let issuerOptions: Issuer[] = [issuer];
+
+      // Se a API pedir 'issuer_id', buscamos a lista completa de emissores
+      if (additional_info_needed && additional_info_needed.includes('issuer_id')) {
+        issuerOptions = await getIssuers(mp, paymentMethod, bin);
+      }
+
+      // Atualiza o State (substitui o createSelectOptions da doc)
+      setIssuers(issuerOptions);
     }
 
-    // Placeholder para o Próximo Passo: Obter Parcelas
+    async function getIssuers(mp: any, paymentMethod: PaymentMethod, bin: string) {
+      try {
+        const { id: paymentMethodId } = paymentMethod;
+        return await mp.getIssuers({ paymentMethodId, bin });
+      } catch (e) {
+        console.error('error getting issuers: ', e);
+        return [];
+      }
+    }
+
+    // Placeholder para Parcelas (Próximo passo)
     async function updateInstallments(mp: any, paymentMethod: any, bin: string) {
-      // Implementaremos na próxima etapa
       console.log('Buscando parcelas para:', bin);
     }
 
     initializeMercadoPago();
 
-    // Cleanup
     return () => {
-      // Limpeza manual do DOM se necessário
       initializationRef.current = false;
     };
-  }, []); // Dependências vazias = roda apenas uma vez no mount
+  }, []);
 
   return (
     <form id="form-checkout">
@@ -144,20 +151,20 @@ export function PaymentForm() {
       <div id="form-checkout__expirationDate" className="container"></div>
       <div id="form-checkout__securityCode" className="container"></div>
 
-      <input 
-        type="text" 
-        id="form-checkout__cardholderName" 
-        placeholder="Titular do cartão" 
-      />
+      <input type="text" id="form-checkout__cardholderName" placeholder="Titular do cartão" />
 
+      {/* Select de Emissores agora populado pelo State 'issuers' */}
       <select id="form-checkout__issuer" name="issuer" defaultValue="">
         <option value="" disabled>Banco emissor</option>
-        {/* Futuro map de issuers aqui */}
+        {issuers.map((issuer) => (
+          <option key={issuer.id} value={issuer.id}>
+            {issuer.name}
+          </option>
+        ))}
       </select>
 
       <select id="form-checkout__installments" name="installments" defaultValue="">
         <option value="" disabled>Parcelas</option>
-        {/* Futuro map de installments aqui */}
       </select>
 
       <select id="form-checkout__identificationType" name="identificationType" defaultValue="">
@@ -170,14 +177,9 @@ export function PaymentForm() {
       <input type="text" id="form-checkout__identificationNumber" name="identificationNumber" placeholder="Número do documento" />
       <input type="email" id="form-checkout__email" name="email" placeholder="E-mail" />
 
-      {/* Inputs Hidden controlados pelo State agora */}
+      {/* Inputs ocultos */}
       <input id="token" name="token" type="hidden" />
-      <input 
-        id="paymentMethodId" 
-        name="paymentMethodId" 
-        type="hidden" 
-        value={paymentMethodId} // Controlado pelo React
-      /> 
+      <input id="paymentMethodId" name="paymentMethodId" type="hidden" value={paymentMethodId} />
       <input id="transactionAmount" name="transactionAmount" type="hidden" value="100" />
       <input id="description" name="description" type="hidden" value="Nome do Produto" />
 
