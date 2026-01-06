@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { loadMercadoPago } from '@mercadopago/sdk-js';
 import './styles.css';
 
-// Interfaces
+// --- INTERFACES (Clean Code: Tipagem forte) ---
 interface IdentificationType {
   id: string;
   name: string;
@@ -14,7 +14,7 @@ interface PaymentMethod {
   payment_type_id: string;
   settings: any[];
   additional_info_needed: string[];
-  issuer: any; // O objeto issuer padrão
+  issuer: any;
 }
 
 interface Issuer {
@@ -22,12 +22,21 @@ interface Issuer {
   name: string;
 }
 
+interface PayerCost {
+  installments: number;
+  recommended_message: string;
+}
+
 export function PaymentForm() {
+  // Constante do valor da compra (Simulando o value="100" do input hidden)
+  const transactionAmount = "100";
+
   // --- STATES ---
   const [identificationTypes, setIdentificationTypes] = useState<IdentificationType[]>([]);
   const [paymentMethodId, setPaymentMethodId] = useState<string>('');
-  const [issuers, setIssuers] = useState<Issuer[]>([]); // Estado para armazenar os emissores
-  const [installments, setInstallments] = useState<any[]>([]);
+  const [issuers, setIssuers] = useState<Issuer[]>([]);
+  // Estado para as parcelas (Payer Costs)
+  const [installmentOptions, setInstallmentOptions] = useState<PayerCost[]>([]);
 
   // --- REFS ---
   const cardNumberRef = useRef<any>(null);
@@ -72,8 +81,8 @@ export function PaymentForm() {
         try {
           if (!bin && paymentMethodId) {
             setPaymentMethodId('');
-            setIssuers([]); // Limpa emissores
-            setInstallments([]); 
+            setIssuers([]);
+            setInstallmentOptions([]); // Limpa as parcelas
           }
 
           if (bin && bin !== currentBinRef.current) {
@@ -84,8 +93,8 @@ export function PaymentForm() {
               setPaymentMethodId(paymentMethod.id);
               
               updatePCIFieldsSettings(paymentMethod);
-              await updateIssuer(mp, paymentMethod, bin); // Agora chama a função real
-              await updateInstallments(mp, paymentMethod, bin);
+              await updateIssuer(mp, paymentMethod, bin);
+              await updateInstallments(mp, paymentMethod, bin); // Chama a função real
             }
           }
 
@@ -107,19 +116,13 @@ export function PaymentForm() {
       }
     }
 
-    // --- IMPLEMENTAÇÃO FIEL À DOCUMENTAÇÃO (Obter Banco Emissor) ---
     async function updateIssuer(mp: any, paymentMethod: PaymentMethod, bin: string) {
       const { additional_info_needed, issuer } = paymentMethod;
-      
-      // Padrão: usa o emissor que veio no objeto paymentMethod
       let issuerOptions: Issuer[] = [issuer];
 
-      // Se a API pedir 'issuer_id', buscamos a lista completa de emissores
       if (additional_info_needed && additional_info_needed.includes('issuer_id')) {
         issuerOptions = await getIssuers(mp, paymentMethod, bin);
       }
-
-      // Atualiza o State (substitui o createSelectOptions da doc)
       setIssuers(issuerOptions);
     }
 
@@ -133,9 +136,23 @@ export function PaymentForm() {
       }
     }
 
-    // Placeholder para Parcelas (Próximo passo)
-    async function updateInstallments(mp: any, paymentMethod: any, bin: string) {
-      console.log('Buscando parcelas para:', bin);
+    // --- IMPLEMENTAÇÃO FIEL À DOCUMENTAÇÃO (Obter Parcelas) ---
+    async function updateInstallments(mp: any, _paymentMethod: any, bin: string) {
+      try {
+        const installments = await mp.getInstallments({
+          amount: transactionAmount,
+          bin,
+          paymentTypeId: 'credit_card'
+        });
+        
+        // A API retorna um array, pegamos o primeiro item e acessamos payer_costs
+        const options = installments[0].payer_costs;
+        
+        // Atualiza o State (substitui o createSelectOptions da doc)
+        setInstallmentOptions(options);
+      } catch (error) {
+        console.error('error getting installments: ', error);
+      }
     }
 
     initializeMercadoPago();
@@ -153,7 +170,6 @@ export function PaymentForm() {
 
       <input type="text" id="form-checkout__cardholderName" placeholder="Titular do cartão" />
 
-      {/* Select de Emissores agora populado pelo State 'issuers' */}
       <select id="form-checkout__issuer" name="issuer" defaultValue="">
         <option value="" disabled>Banco emissor</option>
         {issuers.map((issuer) => (
@@ -163,8 +179,14 @@ export function PaymentForm() {
         ))}
       </select>
 
+      {/* Select de Parcelas populado pelo State 'installmentOptions' */}
       <select id="form-checkout__installments" name="installments" defaultValue="">
         <option value="" disabled>Parcelas</option>
+        {installmentOptions.map((option) => (
+          <option key={option.installments} value={option.installments}>
+            {option.recommended_message}
+          </option>
+        ))}
       </select>
 
       <select id="form-checkout__identificationType" name="identificationType" defaultValue="">
@@ -180,7 +202,7 @@ export function PaymentForm() {
       {/* Inputs ocultos */}
       <input id="token" name="token" type="hidden" />
       <input id="paymentMethodId" name="paymentMethodId" type="hidden" value={paymentMethodId} />
-      <input id="transactionAmount" name="transactionAmount" type="hidden" value="100" />
+      <input id="transactionAmount" name="transactionAmount" type="hidden" value={transactionAmount} />
       <input id="description" name="description" type="hidden" value="Nome do Produto" />
 
       <button type="submit" id="form-checkout__submit">Pagar</button>
