@@ -1,0 +1,15 @@
+/* src/components/PaymentForm/styles.css */
+#form-checkout {
+  display: flex;
+  flex-direction: column;
+  max-width: 600px;
+  gap: 10px; /* Adicionei para dar um respiro entre os campos */
+}
+
+.container {
+  height: 18px;
+  display: inline-block;
+  border: 1px solid rgb(118, 118, 118);
+  border-radius: 2px;
+  padding: 10px; /* Aumentei um pouco para ficar mais fácil de clicar */
+}

@@ -1,0 +1,5 @@
+/* Global styles cleaned per request */
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
