@@ -1,50 +1,58 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { loadMercadoPago } from '@mercadopago/sdk-js';
 import './styles.css';
 
+// Interface para definir o formato do dado que vem do Mercado Pago
+interface IdentificationType {
+  id: string;
+  name: string;
+}
+
 export function PaymentForm() {
-  // Refs para guardar as instâncias dos campos do Mercado Pago
+  // State para armazenar a lista de documentos (CPF, CNPJ, etc.)
+  // Clean Code: Separação de dados (state) da visualização (JSX)
+  const [identificationTypes, setIdentificationTypes] = useState<IdentificationType[]>([]);
+
   const cardNumberRef = useRef<any>(null);
   const expirationDateRef = useRef<any>(null);
   const securityCodeRef = useRef<any>(null);
-  
-  // Ref para garantir que a inicialização ocorra apenas uma vez (React Strict Mode)
   const initializationRef = useRef(false);
 
   useEffect(() => {
-    // Função assíncrona para carregar o SDK e montar os campos
     const initializeMercadoPago = async () => {
       if (initializationRef.current) return;
       initializationRef.current = true;
 
       await loadMercadoPago();
-      
-      // Inicializa a instância do MP
       const mp = new (window as any).MercadoPago('TEST-33d77029-c5e0-425f-b848-606ac9a9264f');
 
-      // 1. Cria e monta o campo do Número do Cartão
+      // 1. Monta os campos (Passo anterior)
       cardNumberRef.current = mp.fields.create('cardNumber', {
         placeholder: "Número do cartão"
       }).mount('form-checkout__cardNumber');
 
-      // 2. Cria e monta o campo de Data de Validade
       expirationDateRef.current = mp.fields.create('expirationDate', {
         placeholder: "MM/YY",
       }).mount('form-checkout__expirationDate');
 
-      // 3. Cria e monta o campo de Código de Segurança
       securityCodeRef.current = mp.fields.create('securityCode', {
         placeholder: "Código de segurança"
       }).mount('form-checkout__securityCode');
+
+      // 2. Obter tipos de documento (NOVO PASSO)
+      // Fiel à doc: chamamos mp.getIdentificationTypes()
+      // Clean Code: Salvamos no state em vez de injetar HTML na mão
+      try {
+        const types = await mp.getIdentificationTypes();
+        setIdentificationTypes(types);
+      } catch (e) {
+        console.error('Erro ao buscar tipos de documento:', e);
+      }
     };
 
     initializeMercadoPago();
 
-    // Função de limpeza (Clean Code: sempre limpar o que criamos)
     return () => {
-      // O SDK do MP não tem um método "unmount" oficial documentado publicamente
-      // de forma simples, mas limpar o innerHTML dos containers previne duplicação visual
-      // caso o componente seja desmontado e montado novamente.
       const ids = ['form-checkout__cardNumber', 'form-checkout__expirationDate', 'form-checkout__securityCode'];
       ids.forEach(id => {
         const element = document.getElementById(id);
@@ -56,13 +64,8 @@ export function PaymentForm() {
 
   return (
     <form id="form-checkout">
-      {/* Container: Número do Cartão */}
       <div id="form-checkout__cardNumber" className="container"></div>
-
-      {/* Container: Data de Validade */}
       <div id="form-checkout__expirationDate" className="container"></div>
-
-      {/* Container: CVV */}
       <div id="form-checkout__securityCode" className="container"></div>
 
       <input 
@@ -79,8 +82,16 @@ export function PaymentForm() {
         <option value="" disabled>Parcelas</option>
       </select>
 
+      {/* NOVO PASSO: Select populado dinamicamente pelo React 
+        Isso substitui a função 'createSelectOptions' da documentação
+      */}
       <select id="form-checkout__identificationType" name="identificationType" defaultValue="">
         <option value="" disabled>Tipo de documento</option>
+        {identificationTypes.map((type) => (
+          <option key={type.id} value={type.id}>
+            {type.name}
+          </option>
+        ))}
       </select>
 
       <input 
@@ -97,7 +108,6 @@ export function PaymentForm() {
         placeholder="E-mail" 
       />
 
-      {/* Inputs hidden */}
       <input id="token" name="token" type="hidden" />
       <input id="paymentMethodId" name="paymentMethodId" type="hidden" />
       <input id="transactionAmount" name="transactionAmount" type="hidden" value="100" />
