@@ -177,30 +177,59 @@ export function PaymentForm() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // --- PASSO ATUAL: CRIAR TOKEN ---
+
   const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault(); // Impede o reload da página
+    event.preventDefault();
 
     try {
       if (!mpRef.current) return;
 
-      // Cria o token usando os dados do State (Clean Code) e dos Campos Seguros (Interno do MP)
+      // 1. Cria o Token (Client-side)
       const token = await mpRef.current.fields.createCardToken({
         cardholderName: formData.cardholderName,
         identificationType: formData.identificationType,
         identificationNumber: formData.identificationNumber,
       });
 
-      // SUCESSO!
-      console.log('Token criado com sucesso:', token.id);
+      console.log('Token criado:', token.id);
+
+      // 2. Prepara o Payload para sua Lambda
+      const backendPayload = {
+        token: token.id,
+        paymentMethodId: paymentMethodId,
+        transactionAmount: transactionAmount,
+        installments: formData.installments,
+        issuer: formData.issuer,
+        email: formData.email,
+        identificationType: formData.identificationType,
+        identificationNumber: formData.identificationNumber
+      };
+
+      // 3. Envia para o Backend (Server-side)
+      // SUBSTITUA PELA URL DA SUA LAMBDA
+      const LAMBDA_URL = "https://sua-url-lambda-aqui.lambda-url.us-east-1.on.aws/";
       
-      // AQUI ENTRA O PRÓXIMO PASSO (Server-side)
-      // Vamos enviar esse token.id + formData para o seu Backend
-      alert(`Token Criado: ${token.id}\nPronto para enviar ao Backend!`);
+      const response = await fetch(LAMBDA_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(backendPayload),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log('Pagamento Criado com Sucesso!', data);
+        alert(`Pagamento Aprovado! ID: ${data.id}\nStatus: ${data.status}`);
+      } else {
+        console.error('Erro no pagamento:', data);
+        alert(`Erro ao processar pagamento: ${JSON.stringify(data)}`);
+      }
 
     } catch (e) {
-      console.error('Erro ao criar token do cartão: ', e);
-      alert('Erro ao criar token. Verifique os dados.');
+      console.error('Erro geral: ', e);
+      alert('Ocorreu um erro ao processar sua solicitação.');
     }
   };
 
