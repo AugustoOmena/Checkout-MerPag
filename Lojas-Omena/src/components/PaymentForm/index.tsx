@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { loadMercadoPago } from '@mercadopago/sdk-js';
-import './styles.css';
+import { useEffect, useRef, useState } from "react";
+import { loadMercadoPago } from "@mercadopago/sdk-js";
+import "./styles.css";
 
 // --- INTERFACES ---
 interface IdentificationType {
@@ -41,19 +41,21 @@ export function PaymentForm() {
   const transactionAmount = "100";
 
   // --- STATES ---
-  const [identificationTypes, setIdentificationTypes] = useState<IdentificationType[]>([]);
-  const [paymentMethodId, setPaymentMethodId] = useState<string>('');
+  const [identificationTypes, setIdentificationTypes] = useState<
+    IdentificationType[]
+  >([]);
+  const [paymentMethodId, setPaymentMethodId] = useState<string>("");
   const [issuers, setIssuers] = useState<Issuer[]>([]);
   const [installmentOptions, setInstallmentOptions] = useState<PayerCost[]>([]);
-  
+
   // State único para os inputs do formulário
   const [formData, setFormData] = useState<FormData>({
-    cardholderName: '',
-    identificationType: '',
-    identificationNumber: '',
-    email: '',
-    issuer: '',
-    installments: ''
+    cardholderName: "",
+    identificationType: "",
+    identificationNumber: "",
+    email: "",
+    issuer: "",
+    installments: "",
   });
 
   // --- REFS ---
@@ -62,7 +64,7 @@ export function PaymentForm() {
   const expirationDateRef = useRef<any>(null);
   const securityCodeRef = useRef<any>(null);
   const initializationRef = useRef(false);
-  const currentBinRef = useRef<string>('');
+  const currentBinRef = useRef<string>("");
 
   useEffect(() => {
     const initializeMercadoPago = async () => {
@@ -71,35 +73,43 @@ export function PaymentForm() {
 
       await loadMercadoPago();
       // Salvamos no Ref para usar no submit depois
-      mpRef.current = new (window as any).MercadoPago('TEST-33d77029-c5e0-425f-b848-606ac9a9264f');
+      mpRef.current = new (window as any).MercadoPago(
+        "TEST-33d77029-c5e0-425f-b848-606ac9a9264f"
+      );
 
       // 1. Monta os campos
-      cardNumberRef.current = mpRef.current.fields.create('cardNumber', {
-        placeholder: "Número do cartão"
-      }).mount('form-checkout__cardNumber');
+      cardNumberRef.current = mpRef.current.fields
+        .create("cardNumber", {
+          placeholder: "Número do cartão",
+        })
+        .mount("form-checkout__cardNumber");
 
-      expirationDateRef.current = mpRef.current.fields.create('expirationDate', {
-        placeholder: "MM/YY",
-      }).mount('form-checkout__expirationDate');
+      expirationDateRef.current = mpRef.current.fields
+        .create("expirationDate", {
+          placeholder: "MM/YY",
+        })
+        .mount("form-checkout__expirationDate");
 
-      securityCodeRef.current = mpRef.current.fields.create('securityCode', {
-        placeholder: "Código de segurança"
-      }).mount('form-checkout__securityCode');
+      securityCodeRef.current = mpRef.current.fields
+        .create("securityCode", {
+          placeholder: "Código de segurança",
+        })
+        .mount("form-checkout__securityCode");
 
       // 2. Busca tipos de documento
       try {
         const types = await mpRef.current.getIdentificationTypes();
         setIdentificationTypes(types);
       } catch (e) {
-        console.error('Erro ao buscar tipos de documento:', e);
+        console.error("Erro ao buscar tipos de documento:", e);
       }
 
       // 3. Listener de BIN Change
-      cardNumberRef.current.on('binChange', async (data: any) => {
+      cardNumberRef.current.on("binChange", async (data: any) => {
         const { bin } = data;
         try {
           if (!bin && paymentMethodId) {
-            setPaymentMethodId('');
+            setPaymentMethodId("");
             setIssuers([]);
             setInstallmentOptions([]);
           }
@@ -117,7 +127,7 @@ export function PaymentForm() {
           }
           currentBinRef.current = bin;
         } catch (e) {
-          console.error('Erro ao obter payment methods:', e);
+          console.error("Erro ao obter payment methods:", e);
         }
       });
     };
@@ -130,35 +140,50 @@ export function PaymentForm() {
       }
     }
 
-    async function updateIssuer(mp: any, paymentMethod: PaymentMethod, bin: string) {
+    async function updateIssuer(
+      mp: any,
+      paymentMethod: PaymentMethod,
+      bin: string
+    ) {
       const { additional_info_needed, issuer } = paymentMethod;
       let issuerOptions: Issuer[] = [issuer];
-      if (additional_info_needed && additional_info_needed.includes('issuer_id')) {
+      if (
+        additional_info_needed &&
+        additional_info_needed.includes("issuer_id")
+      ) {
         issuerOptions = await getIssuers(mp, paymentMethod, bin);
       }
       setIssuers(issuerOptions);
     }
 
-    async function getIssuers(mp: any, paymentMethod: PaymentMethod, bin: string) {
+    async function getIssuers(
+      mp: any,
+      paymentMethod: PaymentMethod,
+      bin: string
+    ) {
       try {
         const { id: paymentMethodId } = paymentMethod;
         return await mp.getIssuers({ paymentMethodId, bin });
       } catch (e) {
-        console.error('error getting issuers: ', e);
+        console.error("error getting issuers: ", e);
         return [];
       }
     }
 
-    async function updateInstallments(mp: any, _paymentMethod: any, bin: string) {
+    async function updateInstallments(
+      mp: any,
+      _paymentMethod: any,
+      bin: string
+    ) {
       try {
         const installments = await mp.getInstallments({
           amount: transactionAmount,
           bin,
-          paymentTypeId: 'credit_card'
+          paymentTypeId: "credit_card",
         });
         setInstallmentOptions(installments[0].payer_costs);
       } catch (error) {
-        console.error('error getting installments: ', error);
+        console.error("error getting installments: ", error);
       }
     }
 
@@ -172,11 +197,12 @@ export function PaymentForm() {
   // --- HANDLERS (Funções de Controle) ---
 
   // Atualiza o state formData quando o usuário digita
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
-
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -191,7 +217,7 @@ export function PaymentForm() {
         identificationNumber: formData.identificationNumber,
       });
 
-      console.log('Token criado:', token.id);
+      console.log("Token criado:", token.id);
 
       // 2. Prepara o Payload para sua Lambda
       const backendPayload = {
@@ -202,17 +228,18 @@ export function PaymentForm() {
         issuer: formData.issuer,
         email: formData.email,
         identificationType: formData.identificationType,
-        identificationNumber: formData.identificationNumber
+        identificationNumber: formData.identificationNumber,
       };
 
       // 3. Envia para o Backend (Server-side)
       // SUBSTITUA PELA URL DA SUA LAMBDA
-      const LAMBDA_URL = "https://sua-url-lambda-aqui.lambda-url.us-east-1.on.aws/";
-      
+      const LAMBDA_URL =
+        "https://252qqbxflh3pd6qirxw3k5jrtq0fzjic.lambda-url.us-east-1.on.aws/";
+
       const response = await fetch(LAMBDA_URL, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(backendPayload),
       });
@@ -220,16 +247,15 @@ export function PaymentForm() {
       const data = await response.json();
 
       if (response.ok) {
-        console.log('Pagamento Criado com Sucesso!', data);
+        console.log("Pagamento Criado com Sucesso!", data);
         alert(`Pagamento Aprovado! ID: ${data.id}\nStatus: ${data.status}`);
       } else {
-        console.error('Erro no pagamento:', data);
+        console.error("Erro no pagamento:", data);
         alert(`Erro ao processar pagamento: ${JSON.stringify(data)}`);
       }
-
     } catch (e) {
-      console.error('Erro geral: ', e);
-      alert('Ocorreu um erro ao processar sua solicitação.');
+      console.error("Erro geral: ", e);
+      alert("Ocorreu um erro ao processar sua solicitação.");
     }
   };
 
@@ -239,34 +265,40 @@ export function PaymentForm() {
       <div id="form-checkout__expirationDate" className="container"></div>
       <div id="form-checkout__securityCode" className="container"></div>
 
-      <input 
-        type="text" 
-        id="form-checkout__cardholderName" 
+      <input
+        type="text"
+        id="form-checkout__cardholderName"
         name="cardholderName" // Name igual à chave do state
-        placeholder="Titular do cartão" 
+        placeholder="Titular do cartão"
         value={formData.cardholderName}
         onChange={handleInputChange}
       />
 
-      <select 
-        id="form-checkout__issuer" 
-        name="issuer" 
+      <select
+        id="form-checkout__issuer"
+        name="issuer"
         value={formData.issuer}
         onChange={handleInputChange}
       >
-        <option value="" disabled>Banco emissor</option>
+        <option value="" disabled>
+          Banco emissor
+        </option>
         {issuers.map((issuer) => (
-          <option key={issuer.id} value={issuer.id}>{issuer.name}</option>
+          <option key={issuer.id} value={issuer.id}>
+            {issuer.name}
+          </option>
         ))}
       </select>
 
-      <select 
-        id="form-checkout__installments" 
-        name="installments" 
+      <select
+        id="form-checkout__installments"
+        name="installments"
         value={formData.installments}
         onChange={handleInputChange}
       >
-        <option value="" disabled>Parcelas</option>
+        <option value="" disabled>
+          Parcelas
+        </option>
         {installmentOptions.map((option) => (
           <option key={option.installments} value={option.installments}>
             {option.recommended_message}
@@ -274,41 +306,62 @@ export function PaymentForm() {
         ))}
       </select>
 
-      <select 
-        id="form-checkout__identificationType" 
-        name="identificationType" 
+      <select
+        id="form-checkout__identificationType"
+        name="identificationType"
         value={formData.identificationType}
         onChange={handleInputChange}
       >
-        <option value="" disabled>Tipo de documento</option>
+        <option value="" disabled>
+          Tipo de documento
+        </option>
         {identificationTypes.map((type) => (
-          <option key={type.id} value={type.id}>{type.name}</option>
+          <option key={type.id} value={type.id}>
+            {type.name}
+          </option>
         ))}
       </select>
 
-      <input 
-        type="text" 
-        id="form-checkout__identificationNumber" 
-        name="identificationNumber" 
-        placeholder="Número do documento" 
+      <input
+        type="text"
+        id="form-checkout__identificationNumber"
+        name="identificationNumber"
+        placeholder="Número do documento"
         value={formData.identificationNumber}
         onChange={handleInputChange}
       />
 
-      <input 
-        type="email" 
-        id="form-checkout__email" 
-        name="email" 
-        placeholder="E-mail" 
+      <input
+        type="email"
+        id="form-checkout__email"
+        name="email"
+        placeholder="E-mail"
         value={formData.email}
         onChange={handleInputChange}
       />
 
-      <input id="paymentMethodId" name="paymentMethodId" type="hidden" value={paymentMethodId} />
-      <input id="transactionAmount" name="transactionAmount" type="hidden" value={transactionAmount} />
-      <input id="description" name="description" type="hidden" value="Nome do Produto" />
+      <input
+        id="paymentMethodId"
+        name="paymentMethodId"
+        type="hidden"
+        value={paymentMethodId}
+      />
+      <input
+        id="transactionAmount"
+        name="transactionAmount"
+        type="hidden"
+        value={transactionAmount}
+      />
+      <input
+        id="description"
+        name="description"
+        type="hidden"
+        value="Nome do Produto"
+      />
 
-      <button type="submit" id="form-checkout__submit">Pagar</button>
+      <button type="submit" id="form-checkout__submit">
+        Pagar
+      </button>
     </form>
   );
 }

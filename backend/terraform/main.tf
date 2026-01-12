@@ -1,11 +1,12 @@
 provider "aws" {
   region = var.aws_region
+  profile = "pessoal"
 }
 
 # Compacta o código Python automaticamente antes do deploy
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_file = "../lambda-functions/checkout_lambda_function.py"
+  source_dir = "../lambda-functions"
   output_path = "lambda_function.zip"
 }
 
@@ -39,7 +40,7 @@ resource "aws_lambda_function" "create_order" {
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
   
   role    = aws_iam_role.lambda_exec_role.arn
-  handler = "lambda_function.lambda_handler" # NomeDoArquivo.NomeDaFuncao
+  handler = "checkout_lambda_function.lambda_handler" # NomeDoArquivo.NomeDaFuncao
   runtime = "python3.9"
 
   environment {
@@ -55,14 +56,26 @@ resource "aws_lambda_function" "create_order" {
 # Habilita a Function URL (Endpoint HTTPS Público)
 resource "aws_lambda_function_url" "url" {
   function_name      = aws_lambda_function.create_order.function_name
-  authorization_type = "NONE" # Aberto para o público (seu frontend)
+  authorization_type = "NONE" # Autenticação é feita via Token no código, não na infra
 
-  # Configuração de CORS direto na Infraestrutura (Boas práticas)
   cors {
-    allow_credentials = true
-    allow_origins     = ["*"]
-    allow_methods     = ["POST", "OPTIONS"]
-    allow_headers     = ["date", "keep-alive", "content-type", "authorization", "x-idempotency-key"]
-    max_age           = 86400
+    # SEGURANÇA: allow_credentials = false.
+    # Como estamos passando dados via JSON Body (não Cookies), não precisamos de credentials.
+    # Isso elimina metade dos problemas de conflito de CORS.
+    allow_credentials = false 
+
+    # SEGURANÇA: Whitelist Explícita.
+    # Aqui definimos quem pode chamar. Adicione a URL de prod aqui depois.
+    allow_origins     = ["http://localhost:5173"] 
+
+    # MÉTODOS: Apenas o necessário. Nada de DELETE, PUT ou GET.
+    allow_methods     = ["POST"]
+
+    # HEADERS: Apenas o que seu app realmente envia.
+    allow_headers     = ["content-type", "authorization"]
+    
+    # CACHE: 0 para desenvolvimento (para o navegador não lembrar da regra antiga errada)
+    # Em produção mudamos para 86400
+    max_age           = 0 
   }
 }
